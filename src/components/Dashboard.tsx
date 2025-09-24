@@ -1,87 +1,195 @@
-import { useQuery, useMutation, useAction } from "convex/react";
-import { api } from "../../convex/_generated/api";
-import { FinancialAvatar } from "./FinancialAvatar";
-import { StoryTimeline } from "./StoryTimeline";
-import { InsightCards } from "./InsightCards";
-import { QuickActions } from "./QuickActions";
-import { GoalTracker } from "./GoalTracker";
-import { SpendingOverview } from "./SpendingOverview";
+import { motion } from 'motion/react';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Button } from './ui/button';
+import { Progress } from './ui/progress';
+import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Plus, TrendingUp, TrendingDown, Target, AlertCircle } from 'lucide-react';
+import { Transaction, Category } from './types';
 
-export function Dashboard() {
-  const profile = useQuery(api.financialProfile.getProfile);
-  const insights = useQuery(api.insights.getInsights);
-  const generateInsights = useAction(api.insights.generateInsights);
-  const createProfile = useMutation(api.financialProfile.createProfile);
+interface DashboardProps {
+  transactions: Transaction[];
+  onAddTransaction: () => void;
+  onGoalsClick: () => void;
+}
 
-  if (profile === undefined) {
-    return (
-      <div className="flex justify-center items-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
-      </div>
-    );
-  }
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
-  if (profile === null) {
-    // Create profile if it doesn't exist
-    createProfile();
-    return (
-      <div className="flex justify-center items-center min-h-[400px]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Setting up your financial profile...</p>
-        </div>
-      </div>
-    );
-  }
+export function Dashboard({ transactions, onAddTransaction, onGoalsClick }: DashboardProps) {
+  // Calculate financial metrics
+  const balance = transactions.reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), 0);
+  const totalIncome = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+  const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
 
-  const handleGenerateInsights = async () => {
-    try {
-      await generateInsights();
-    } catch (error) {
-      console.error("Failed to generate insights:", error);
-    }
-  };
+  // Category breakdown for pie chart
+  const categoryData = transactions
+    .filter(t => t.type === 'expense')
+    .reduce((acc, t) => {
+      acc[t.category] = (acc[t.category] || 0) + t.amount;
+      return acc;
+    }, {} as Record<string, number>);
+
+  const pieData = Object.entries(categoryData).map(([category, amount]) => ({
+    name: category,
+    value: amount
+  }));
+
+  // Weekly trend data
+  const last7Days = Array.from({length: 7}, (_, i) => {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    return date.toISOString().split('T')[0];
+  }).reverse();
+
+  const trendData = last7Days.map(date => {
+    const dayTransactions = transactions.filter(t => t.date === date);
+    const dayBalance = dayTransactions.reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), 0);
+    return {
+      date: new Date(date).toLocaleDateString('en-US', { weekday: 'short' }),
+      balance: dayBalance
+    };
+  });
 
   return (
-    <div className="space-y-8">
-      {/* Header with Avatar */}
-      <div className="text-center">
-        <h2 className="text-3xl font-extrabold mb-2 bg-gradient-to-r from-cyan-200 via-fuchsia-300 to-purple-300 bg-clip-text text-transparent drop-shadow-xl">
-          Welcome to Your Living Financial Story
-        </h2>
-        <p className="mb-6 text-cyan-100 text-lg drop-shadow-md">
-          Your financial identity evolves with every decision you make
-        </p>
-        <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-6 inline-block max-w-lg w-full mx-auto">
-          <FinancialAvatar profile={profile} />
-        </div>
-      </div>
+    <div className="p-6 space-y-6">
+      {/* Balance Overview */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <Card className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+          <CardContent className="p-6">
+            <h2 className="text-lg opacity-90 mb-2">Total Balance</h2>
+            <p className="text-3xl font-bold">₹{balance.toLocaleString()}</p>
+            <div className="flex justify-between mt-4 text-sm">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4" />
+                <span>Income: ₹{totalIncome.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <TrendingDown className="h-4 w-4" />
+                <span>Expenses: ₹{totalExpenses.toLocaleString()}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* Quick Actions */}
-      <div className="mt-8">
-        <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-6">
-          <QuickActions onInsightsGenerated={handleGenerateInsights} />
-        </div>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+        className="grid grid-cols-2 gap-4"
+      >
+        <Button 
+          onClick={onAddTransaction}
+          className="h-16 bg-green-600 hover:bg-green-700 transition-all duration-200 hover:scale-105"
+        >
+          <Plus className="h-6 w-6 mr-2" />
+          Add Transaction
+        </Button>
+        <Button 
+          onClick={onGoalsClick}
+          variant="outline"
+          className="h-16 border-2 hover:bg-blue-50 transition-all duration-200 hover:scale-105"
+        >
+          <Target className="h-6 w-6 mr-2" />
+          Set Goals
+        </Button>
+      </motion.div>
+
+      {/* Charts Section */}
+      <div className="grid md:grid-cols-2 gap-6">
+        {/* Weekly Trend */}
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+        >
+          <Card>
+            <CardHeader>
+              <CardTitle>Weekly Trend</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={trendData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip formatter={(value) => [`₹${value}`, 'Balance']} />
+                  <Line type="monotone" dataKey="balance" stroke="#8884d8" strokeWidth={3} />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Expense Categories */}
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+        >
+          <Card>
+            <CardHeader>
+              <CardTitle>Expense Categories</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {pieData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => [`₹${value}`, 'Amount']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-48 text-gray-500">
+                  <div className="text-center">
+                    <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No expense data yet</p>
+                    <p className="text-sm">Add some transactions to see your spending breakdown</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left Column - Goals and Spending */}
-        <div className="lg:col-span-1 space-y-6">
-          <GoalTracker profile={profile} />
-          <SpendingOverview />
-        </div>
-
-        {/* Middle Column - Story Timeline */}
-        <div className="lg:col-span-1">
-          <StoryTimeline />
-        </div>
-
-        {/* Right Column - Insights */}
-        <div className="lg:col-span-1">
-          <InsightCards insights={insights} />
-        </div>
-      </div>
+      {/* Budget Alert */}
+      {totalExpenses > 5000 && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
+        >
+          <Card className="border-orange-200 bg-orange-50">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="h-5 w-5 text-orange-600" />
+                <div>
+                  <h4 className="font-medium text-orange-900">Spending Alert</h4>
+                  <p className="text-sm text-orange-700">You've spent ₹{totalExpenses.toLocaleString()} this month. Consider reviewing your budget.</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
     </div>
   );
 }
